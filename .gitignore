@@ -1,0 +1,7 @@
+# Runtime archive output
+archive/
+*.ndjson
+
+# Python
+__pycache__/
+*.pyc
