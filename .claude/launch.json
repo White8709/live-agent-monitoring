@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "live-agent-monitoring",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["dashboard.py"],
+      "port": 8787
+    }
+  ]
+}
