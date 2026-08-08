@@ -5,3 +5,4 @@ archive/
 # Python
 __pycache__/
 *.pyc
+docs/_static.html

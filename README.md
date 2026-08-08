@@ -13,6 +13,10 @@ archives history for later retrieval.
 No `pip install`, no `npm install` — it runs on the Python 3 standard library
 alone.
 
+![Live Agent Monitoring dashboard](docs/dashboard.png)
+
+<sub>Dashboard populated by a **safe simulation**: neutralized commands (short-circuited and aimed at reserved/non-existent targets) that Numbat's rules detect without anything executing — spanning recon, secret reads, remote-code-exec, and a critical SSH-persistence technique, each mapped to a MITRE ATT&CK ID.</sub>
+
 ---
 
 ## What it does
