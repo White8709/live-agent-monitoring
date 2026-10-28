@@ -14,6 +14,7 @@ import queue
 import threading
 import time
 import zipfile
+from urllib.parse import parse_qs, urlsplit
 
 DEFAULT_FINDINGS = os.path.expanduser("~/.numbat/findings.ndjson")
 DEFAULT_RECORDS = os.path.expanduser("~/.numbat/records.ndjson")
@@ -40,6 +41,270 @@ PORT = int(os.environ.get("NUMBAT_DASH_PORT", "8787"))
 ARCHIVE_DIR = os.environ.get(
     "NUMBAT_ARCHIVE_DIR", os.path.expanduser("~/.numbat/archive")
 )
+
+TRANSLATIONS = {
+    "en": {
+        "dashboard_title": "Numbat — Live Agent Monitor",
+        "dashboard_heading": "Numbat · Live Agent Monitor",
+        "archives_title": "Numbat — Archived Records",
+        "archives_heading": "Numbat · Archived Records",
+        "language": "Language",
+        "findings": "findings",
+        "decisions": "decisions",
+        "events": "events",
+        "indicators": "indicators",
+        "archives": "Archives",
+        "export_excel": "Export Excel",
+        "reset": "Reset",
+        "tile_findings": "Findings",
+        "tile_high_critical": "High / Critical",
+        "tile_medium": "Medium",
+        "tile_blocked": "Blocked",
+        "tile_rules": "Rules hit",
+        "tile_agents": "Agents",
+        "tile_events": "Events",
+        "tile_indicators": "Indicators",
+        "clear_filters": "Show all",
+        "agent_filter_label": "Filter by agent",
+        "agent_options": "Select agents",
+        "no_agents": "No agents available",
+        "no_filter_results": "No records match the selected filters.",
+        "selected_agent_count": "{n} selected",
+        "severity_mix": "Severity mix",
+        "top_rules": "Top rules",
+        "none_yet": "none yet",
+        "empty_activity": "Waiting for agent activity… events and detections will appear here in real time.",
+        "feed_note": "Showing the latest {limit} matching records; summary counts include all loaded records.",
+        "connecting": "connecting…",
+        "live": "live",
+        "reconnecting": "reconnecting…",
+        "label_agent": "agent",
+        "label_actor": "actor",
+        "label_tool": "tool",
+        "label_decision": "decision",
+        "label_mode": "mode",
+        "label_rules": "rules",
+        "label_reason": "reason",
+        "label_confidence": "confidence",
+        "label_count": "count",
+        "label_first_seen": "first seen",
+        "label_rule": "rule",
+        "label_command": "command",
+        "diagnostic_title": "Numbat diagnostic",
+        "scan_summary": "Scan summary",
+        "last_seen": "· last {time}",
+        "relative_seconds": "{n}s ago",
+        "relative_minutes": "{n}m ago",
+        "relative_hours": "{n}h ago",
+        "relative_days": "{n}d ago",
+        "severity_title": "{name}: {count}",
+        "confirm_reset": "Reset live records?\n\nCurrent records are archived first (retrievable via Archives), then cleared from the live view.",
+        "toast_archived_one": "Archived {count} record{archive_suffix}",
+        "toast_archived_many": "Archived {count} records{archive_suffix}",
+        "archive_suffix": " → {archived}",
+        "toast_empty": "Already empty — nothing to archive",
+        "toast_reset_failed": "Reset failed",
+        "back_to_dashboard": "Back to live dashboard",
+        "archive_file": "Archive file",
+        "archive_records": "Records",
+        "archive_size": "Size",
+        "archives_empty": "No archives yet — use Reset on the dashboard to create one.",
+        "xlsx_headers": [
+            "Time", "Type", "Severity", "Rule", "Rule version", "Title",
+            "Actor", "Agent", "Confidence", "MITRE tags", "Decision",
+            "Mode", "Reason", "Tool", "Command", "Session", "ID",
+            "Indicator value", "Indicator count",
+        ],
+        "xlsx_sheet_name": "Records",
+        "record_types": {
+            "event": "Event", "finding": "Finding", "enforcement": "Decision",
+            "indicator": "Indicator", "diagnostic": "Diagnostic",
+            "scan_summary": "Scan summary",
+        },
+        "severities": {
+            "critical": "Critical", "high": "High", "medium": "Medium",
+            "low": "Low", "info": "Info",
+        },
+        "decisions_map": {
+            "allow": "Allow", "deny": "Deny", "no_override": "No override",
+            "asked": "Asked",
+        },
+        "event_types": {
+            "session.start": "Session started", "session.end": "Session ended",
+            "prompt.user": "User prompt", "command.exec": "Command execution",
+            "command.result": "Command result", "tool.call": "Tool call",
+            "tool.result": "Tool result", "permission.requested": "Permission requested",
+            "file.write": "File write", "file.delete": "File deletion",
+            "message.assistant": "Assistant message",
+        },
+        "indicator_types": {
+            "domain": "Domain", "url": "URL", "email": "Email",
+            "ipv4": "IPv4 address", "ipv6": "IPv6 address",
+            "md5": "MD5 hash", "sha1": "SHA-1 hash", "sha256": "SHA-256 hash",
+        },
+        "diagnostic_levels": {"info": "Info", "warn": "Warning", "error": "Error"},
+    },
+    "zh-TW": {
+        "dashboard_title": "Numbat — AI 代理程式即時監看",
+        "dashboard_heading": "Numbat・AI 代理程式即時監看",
+        "archives_title": "Numbat — 封存紀錄",
+        "archives_heading": "Numbat・封存紀錄",
+        "language": "語言",
+        "findings": "偵測結果",
+        "decisions": "決策",
+        "events": "事件",
+        "indicators": "指標",
+        "archives": "封存紀錄",
+        "export_excel": "匯出 Excel",
+        "reset": "重設",
+        "tile_findings": "偵測結果",
+        "tile_high_critical": "高／嚴重",
+        "tile_medium": "中",
+        "tile_blocked": "已封鎖",
+        "tile_rules": "觸發規則",
+        "tile_agents": "代理程式",
+        "tile_events": "事件",
+        "tile_indicators": "指標",
+        "clear_filters": "顯示全部",
+        "agent_filter_label": "依代理程式篩選",
+        "agent_options": "選取代理程式",
+        "no_agents": "目前沒有代理程式",
+        "no_filter_results": "沒有符合篩選條件的紀錄。",
+        "selected_agent_count": "已選取 {n} 個",
+        "severity_mix": "嚴重程度分布",
+        "top_rules": "常見觸發規則",
+        "none_yet": "目前沒有",
+        "empty_activity": "等待代理程式活動中……事件與偵測結果會即時顯示。",
+        "feed_note": "僅顯示符合篩選條件的最新 {limit} 筆紀錄；統計包含目前載入的全部紀錄。",
+        "connecting": "連線中……",
+        "live": "即時連線",
+        "reconnecting": "重新連線中……",
+        "label_agent": "代理程式",
+        "label_actor": "操作者",
+        "label_tool": "工具",
+        "label_decision": "決策",
+        "label_mode": "模式",
+        "label_rules": "規則",
+        "label_reason": "原因",
+        "label_confidence": "信心程度",
+        "label_count": "次數",
+        "label_first_seen": "首次出現",
+        "label_rule": "規則",
+        "label_command": "指令",
+        "diagnostic_title": "Numbat 診斷訊息",
+        "scan_summary": "掃描摘要",
+        "last_seen": "・最近活動：{time}",
+        "relative_seconds": "{n} 秒前",
+        "relative_minutes": "{n} 分鐘前",
+        "relative_hours": "{n} 小時前",
+        "relative_days": "{n} 天前",
+        "severity_title": "{name}：{count}",
+        "confirm_reset": "要重設目前的紀錄嗎？\n\n系統會先封存紀錄，再清除即時清單；封存檔可在「封存紀錄」頁下載。",
+        "toast_archived_one": "已封存 {count} 筆紀錄{archive_suffix}",
+        "toast_archived_many": "已封存 {count} 筆紀錄{archive_suffix}",
+        "archive_suffix": "（{archived}）",
+        "toast_empty": "目前沒有紀錄可封存。",
+        "toast_reset_failed": "重設失敗。",
+        "back_to_dashboard": "返回即時儀表板",
+        "archive_file": "封存檔案",
+        "archive_records": "紀錄筆數",
+        "archive_size": "檔案大小",
+        "archives_empty": "目前沒有封存紀錄。按下主頁的「重設」會建立封存紀錄。",
+        "xlsx_headers": [
+            "時間", "類型", "嚴重程度", "規則", "規則版本", "標題",
+            "操作者", "代理程式", "信心程度", "MITRE 標籤", "決策",
+            "模式", "原因", "工具", "指令", "工作階段", "ID",
+            "指標值", "指標次數",
+        ],
+        "xlsx_sheet_name": "紀錄",
+        "record_types": {
+            "event": "事件", "finding": "偵測結果", "enforcement": "管制決策",
+            "indicator": "指標", "diagnostic": "診斷", "scan_summary": "掃描摘要",
+        },
+        "severities": {
+            "critical": "嚴重", "high": "高", "medium": "中",
+            "low": "低", "info": "資訊",
+        },
+        "decisions_map": {
+            "allow": "允許", "deny": "拒絕", "no_override": "未覆寫",
+            "asked": "待確認",
+        },
+        "event_types": {
+            "session.start": "工作階段開始", "session.end": "工作階段結束",
+            "prompt.user": "使用者提示", "command.exec": "執行指令",
+            "command.result": "指令結果", "tool.call": "工具呼叫",
+            "tool.result": "工具結果", "permission.requested": "要求權限",
+            "file.write": "檔案寫入", "file.delete": "檔案刪除",
+            "message.assistant": "助理訊息",
+        },
+        "indicator_types": {
+            "domain": "網域", "url": "網址", "email": "電子郵件",
+            "ipv4": "IPv4 位址", "ipv6": "IPv6 位址",
+            "md5": "MD5 雜湊", "sha1": "SHA-1 雜湊", "sha256": "SHA-256 雜湊",
+        },
+        "diagnostic_levels": {"info": "資訊", "warn": "警告", "error": "錯誤"},
+    },
+}
+
+NON_TAIWAN_TERMS = (
+    "用户", "信息", "默認", "网络", "網絡", "服务器", "服務器", "数据", "數據",
+    "視頻", "软件", "軟件", "鼠標", "打印", "链接", "鏈接", "质量", "質量",
+    "激活", "加載", "保存", "界面", "用戶",
+)
+
+
+def normalize_language(language):
+    return language if language in TRANSLATIONS else "en"
+
+
+I18N_SCRIPT = r"""
+<script>
+const translationCatalog=__TRANSLATION_CATALOG__;
+const languageStorageKey='numbat-dashboard-language';
+let activeLanguage='en';
+function t(key,values={}){
+  const template=translationCatalog[activeLanguage][key]??translationCatalog.en[key]??key;
+  return String(template).replace(/\{([\w]+)\}/g,(_,name)=>
+    Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):'{'+name+'}');
+}
+function enumLabel(group,value){
+  return translationCatalog[activeLanguage][group]?.[value]||value;
+}
+function chooseInitialLanguage(savedLanguage,browserLocale){
+  if(Object.prototype.hasOwnProperty.call(translationCatalog,savedLanguage))return savedLanguage;
+  return browserLocale==='zh-TW'?'zh-TW':'en';
+}
+function setLanguage(language,persist=true){
+  if(!Object.prototype.hasOwnProperty.call(translationCatalog,language))return;
+  activeLanguage=language;
+  if(persist){try{sessionStorage.setItem(languageStorageKey,language);}catch(_){}}
+  document.documentElement.lang=language;
+  document.querySelectorAll('[data-i18n]').forEach(node=>{node.textContent=t(node.dataset.i18n);});
+  document.querySelectorAll('[data-i18n-aria-label]').forEach(node=>{
+    node.setAttribute('aria-label',t(node.dataset.i18nAriaLabel));
+  });
+  const picker=document.getElementById('languageSelect');
+  if(picker)picker.value=language;
+  window.dispatchEvent(new CustomEvent('numbat-language-change',{detail:{language}}));
+}
+let initialLanguage='en';
+try{
+  const savedLanguage=sessionStorage.getItem(languageStorageKey);
+  initialLanguage=chooseInitialLanguage(savedLanguage,navigator.language);
+}catch(_){initialLanguage=chooseInitialLanguage(null,navigator.language);}
+window.NumbatI18n={t,enumLabel,chooseInitialLanguage,get language(){return activeLanguage;},setLanguage};
+const languagePicker=document.getElementById('languageSelect');
+if(languagePicker)languagePicker.addEventListener('change',()=>setLanguage(languagePicker.value));
+setLanguage(initialLanguage,false);
+</script>
+"""
+
+
+def render_template(template):
+    catalog = json.dumps(TRANSLATIONS, ensure_ascii=False)
+    catalog = catalog.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    runtime = I18N_SCRIPT.replace("__TRANSLATION_CATALOG__", catalog)
+    return template.replace("{{I18N_SCRIPT}}", runtime)
 
 clients = []
 clients_lock = threading.Lock()
@@ -118,7 +383,7 @@ def watcher():
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Numbat — Live Findings</title>
+<title data-i18n="dashboard_title">Numbat — Live Agent Monitor</title>
 <style>
 :root{
   --bg:#0e1116;--panel:#161b22;--panel2:#1c2430;--border:#2a3441;
@@ -142,8 +407,20 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
   70%{box-shadow:0 0 0 8px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
 .dot.off{background:var(--high);animation:none}
 .spacer{flex:1}
+.language-wrap{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.language-select{font:inherit;color:var(--text);background:var(--panel2);
+  border:1px solid var(--border);border-radius:7px;padding:5px 8px}
 .stat{color:var(--muted);font-size:12px}
 .stat b{color:var(--text);font-variant-numeric:tabular-nums}
+.stat-filter{display:inline-flex;align-items:center;gap:5px;color:var(--muted);
+  background:transparent;border:1px solid transparent;border-radius:7px;
+  padding:4px 6px;font:inherit;white-space:nowrap;cursor:pointer}
+.stat-filter b{color:var(--text);font-variant-numeric:tabular-nums}
+.stat-filter:hover,.stat-filter:focus-visible,.stat-filter[aria-pressed="true"]{
+  border-color:var(--accent);background:var(--panel2);color:var(--accent)}
+.stat-filter:focus-visible,.filter-tile:focus-visible,.agent-menu input:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+.filter-clear[hidden]{display:none}
 .wrap{max-width:960px;margin:0 auto;padding:20px}
 .empty{color:var(--muted);text-align:center;padding:60px 20px;font-size:15px}
 .card{background:var(--panel);border:1px solid var(--border);border-left-width:4px;
@@ -196,6 +473,25 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
 @media(max-width:760px){.tiles{grid-template-columns:repeat(2,1fr)}}
 .tile{background:var(--panel);border:1px solid var(--border);border-radius:10px;
   padding:13px 15px}
+.filter-tile{display:block;width:100%;color:var(--text);font:inherit;text-align:left;
+  cursor:pointer;transition:border-color .15s,background .15s}
+.filter-tile:hover,.filter-tile[aria-pressed="true"]{
+  border-color:var(--accent);background:var(--panel2)}
+.filter-selection{font-size:11px;color:var(--accent);margin-top:6px}
+.agent-filter{position:relative;min-width:0}
+.agent-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:12;
+  width:min(320px,calc(100vw - 40px));max-height:300px;overflow:auto;
+  padding:12px;background:var(--panel);border:1px solid var(--border);
+  border-radius:9px;box-shadow:0 8px 28px rgba(0,0,0,.35)}
+.agent-menu[hidden]{display:none}
+.agent-menu fieldset{margin:0;padding:0;border:0}
+.agent-menu legend{font-size:12px;font-weight:650;margin-bottom:8px}
+.agent-options{display:grid;gap:4px}
+.agent-options label{display:flex;align-items:center;gap:8px;padding:5px 4px;
+  border-radius:5px;cursor:pointer;overflow-wrap:anywhere}
+.agent-options label:hover{background:var(--panel2)}
+.agent-options input{accent-color:var(--accent)}
+.agent-empty{color:var(--muted);font-size:12px;padding:5px 4px}
 .tile .num{font-size:27px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1}
 .tile .lbl{font-size:10.5px;color:var(--muted);margin-top:7px;text-transform:uppercase;
   letter-spacing:.5px}
@@ -225,64 +521,154 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
 <body>
 <header>
   <span class="dot" id="dot"></span>
-  <h1>Numbat &middot; Live Agent Monitor</h1>
+  <h1 data-i18n="dashboard_heading">Numbat &middot; Live Agent Monitor</h1>
   <div class="spacer"></div>
-  <span class="stat">findings <b id="cFind">0</b></span>
-  <span class="stat">decisions <b id="cEnf">0</b></span>
-  <span class="stat">events <b id="cEvents">0</b></span>
-  <span class="stat">indicators <b id="cIndicators">0</b></span>
-  <a class="btn" href="archives" target="_blank">Archives</a>
-  <a class="btn" href="export.xlsx">&#8681; Export Excel</a>
-  <button class="btn danger" id="resetBtn">&#8635; Reset</button>
-  <span class="stat" id="conn">connecting&hellip;</span>
+  <span class="language-wrap"><label for="languageSelect" data-i18n="language">Language</label>
+    <select class="language-select" id="languageSelect" data-i18n-aria-label="language">
+      <option value="en">English</option><option value="zh-TW">繁體中文（台灣）</option>
+    </select></span>
+  <button class="stat-filter" type="button" data-filter-type="finding" aria-pressed="false"><span data-i18n="findings">findings</span> <b id="cFind">0</b></button>
+  <button class="stat-filter" type="button" data-filter-type="enforcement" aria-pressed="false"><span data-i18n="decisions">decisions</span> <b id="cEnf">0</b></button>
+  <button class="stat-filter" type="button" data-filter-type="event" aria-pressed="false"><span data-i18n="events">events</span> <b id="cEvents">0</b></button>
+  <button class="stat-filter" type="button" data-filter-type="indicator" aria-pressed="false"><span data-i18n="indicators">indicators</span> <b id="cIndicators">0</b></button>
+  <button class="btn filter-clear" id="clearFilters" type="button" data-i18n="clear_filters" hidden>Show all</button>
+  <a class="btn" href="archives" target="_blank" rel="noopener" data-i18n="archives">Archives</a>
+  <a class="btn" id="exportBtn" href="export.xlsx" data-i18n="export_excel">Export Excel</a>
+  <button class="btn danger" id="resetBtn" data-i18n="reset">Reset</button>
+  <span class="stat" id="conn" data-i18n="connecting">connecting&hellip;</span>
 </header>
 <div class="wrap">
   <section class="stats">
     <div class="tiles">
-      <div class="tile"><div class="num" id="sTotal">0</div><div class="lbl">Findings</div></div>
-      <div class="tile hi"><div class="num" id="sHigh">0</div><div class="lbl">High / Critical</div></div>
-      <div class="tile md"><div class="num" id="sMed">0</div><div class="lbl">Medium</div></div>
-      <div class="tile ok"><div class="num" id="sBlocked">0</div><div class="lbl">Blocked</div></div>
-      <div class="tile"><div class="num" id="sRules">0</div><div class="lbl">Rules hit</div></div>
-      <div class="tile"><div class="num" id="sAgents">0</div><div class="lbl">Agents</div></div>
-      <div class="tile"><div class="num" id="sEvents">0</div><div class="lbl">Events</div></div>
-      <div class="tile"><div class="num" id="sIndicators">0</div><div class="lbl">Indicators</div></div>
+      <button class="tile filter-tile" type="button" data-filter-type="finding" aria-pressed="false"><div class="num" id="sTotal">0</div><div class="lbl" data-i18n="tile_findings">Findings</div></button>
+      <button class="tile filter-tile hi" type="button" data-filter-severity="high" aria-pressed="false"><div class="num" id="sHigh">0</div><div class="lbl" data-i18n="tile_high_critical">High / Critical</div></button>
+      <button class="tile filter-tile md" type="button" data-filter-severity="medium" aria-pressed="false"><div class="num" id="sMed">0</div><div class="lbl" data-i18n="tile_medium">Medium</div></button>
+      <button class="tile filter-tile ok" type="button" id="blockedFilter" aria-pressed="false"><div class="num" id="sBlocked">0</div><div class="lbl" data-i18n="tile_blocked">Blocked</div></button>
+      <button class="tile filter-tile" type="button" id="rulesFilter" aria-pressed="false"><div class="num" id="sRules">0</div><div class="lbl" data-i18n="tile_rules">Rules hit</div></button>
+      <div class="agent-filter">
+        <button class="tile filter-tile agent-filter-button" type="button" id="agentsFilter"
+          aria-pressed="false" aria-expanded="false" aria-controls="agentFilterPanel">
+          <div class="num" id="sAgents">0</div><div class="lbl" data-i18n="tile_agents">Agents</div>
+          <div class="filter-selection" id="selectedAgentCount" hidden></div>
+        </button>
+        <div class="agent-menu" id="agentFilterPanel" role="group"
+          aria-label="Filter by agent" data-i18n-aria-label="agent_filter_label" hidden>
+          <fieldset><legend data-i18n="agent_options">Select agents</legend>
+            <div class="agent-options" id="agentFilterOptions">
+              <div class="agent-empty" data-i18n="no_agents">No agents available</div>
+            </div>
+          </fieldset>
+        </div>
+      </div>
+      <button class="tile filter-tile" type="button" data-filter-type="event" aria-pressed="false"><div class="num" id="sEvents">0</div><div class="lbl" data-i18n="tile_events">Events</div></button>
+      <button class="tile filter-tile" type="button" data-filter-type="indicator" aria-pressed="false"><div class="num" id="sIndicators">0</div><div class="lbl" data-i18n="tile_indicators">Indicators</div></button>
     </div>
     <div class="stats2">
       <div class="panel">
-        <div class="sub">Severity mix</div>
+        <div class="sub" data-i18n="severity_mix">Severity mix</div>
         <div class="sevbar" id="sevbar"></div>
         <div class="sevlegend" id="sevlegend"></div>
       </div>
       <div class="panel">
-        <div class="sub">Top rules <span class="muted" id="lastSeen"></span></div>
-        <div id="rulesList"><span class="stat">none yet</span></div>
+        <div class="sub"><span data-i18n="top_rules">Top rules</span> <span class="muted" id="lastSeen"></span></div>
+        <div id="rulesList"><span class="stat" data-i18n="none_yet">none yet</span></div>
       </div>
     </div>
   </section>
-  <div id="empty" class="empty">Waiting for agent activity&hellip; events and detections will appear here in real time.</div>
+  <div id="empty" class="empty" data-i18n="empty_activity">Waiting for agent activity&hellip; events and detections will appear here in real time.</div>
   <div id="feedNote" class="stat" style="display:none;margin-bottom:10px"></div>
   <div id="list"></div>
 </div>
 <div class="toast" id="toast"></div>
+{{I18N_SCRIPT}}
 <script>
 const list=document.getElementById('list'), empty=document.getElementById('empty');
 const dot=document.getElementById('dot'), conn=document.getElementById('conn');
 const all=[]; let lastTs=null;
 const maxCards=200;
+const i18n=window.NumbatI18n;
+const filters={types:new Set(),severities:new Set(),blocked:false,rules:false,agents:new Set()};
+const agentFilter=document.querySelector('.agent-filter');
+const agentFilterButton=document.getElementById('agentsFilter');
+const agentFilterPanel=document.getElementById('agentFilterPanel');
+const agentFilterOptions=document.getElementById('agentFilterOptions');
+let agentOptionsSignature='';
+let activeToast=null;
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function fmt(ts){if(!ts)return'';const d=new Date(ts);return isNaN(d)?esc(ts):d.toLocaleString();}
+function fmt(ts){if(!ts)return'';const d=new Date(ts);return isNaN(d)?esc(ts):d.toLocaleString(i18n.language);}
 function recordType(rec){
   if(rec.record_type)return rec.record_type;
   return rec.decision_id?'enforcement':'finding';
 }
+function agentIdentity(rec){
+  const value=rec.source_agent||(recordType(rec)==='event'?rec.actor:'');
+  return value==null?'':String(value);
+}
+function matchesFilters(rec){
+  const type=recordType(rec);
+  if(filters.types.size&&!filters.types.has(type))return false;
+  if(filters.severities.size){
+    const severity=String(rec.severity||'').toLowerCase();
+    const severityGroup=severity==='high'||severity==='critical'?'high':
+      severity==='medium'?'medium':'';
+    if(!filters.severities.has(severityGroup))return false;
+  }
+  if(filters.blocked&&!(type==='enforcement'&&rec.decision==='deny'))return false;
+  if(filters.rules){
+    const ruleIds=Array.isArray(rec.rule_ids)?rec.rule_ids:[rec.rule_ids];
+    if(!rec.rule_id&&!ruleIds.some(value=>value!=null&&String(value).trim()))return false;
+  }
+  if(filters.agents.size&&!filters.agents.has(agentIdentity(rec)))return false;
+  return true;
+}
+function activeFilters(){
+  return filters.types.size>0||filters.severities.size>0||filters.blocked||
+    filters.rules||filters.agents.size>0;
+}
+function updateAgentOptions(){
+  const values=new Set(all.map(agentIdentity).filter(Boolean));
+  filters.agents.forEach(value=>values.add(value));
+  const agents=Array.from(values).sort((a,b)=>a.localeCompare(b,i18n.language));
+  const signature=JSON.stringify([i18n.language,agents]);
+  if(signature!==agentOptionsSignature){
+    agentFilterOptions.innerHTML=agents.length?agents.map(agent=>
+      `<label><input type="checkbox" value="${esc(agent)}" data-agent-value="${esc(agent)}">`+
+      `<span>${esc(agent)}</span></label>`).join(''):
+      `<div class="agent-empty">${i18n.t('no_agents')}</div>`;
+    agentOptionsSignature=signature;
+  }
+  agentFilterOptions.querySelectorAll('input[data-agent-value]').forEach(input=>{
+    input.checked=filters.agents.has(input.value);
+  });
+}
+function updateFilterControls(){
+  document.querySelectorAll('[data-filter-type]').forEach(button=>
+    button.setAttribute('aria-pressed',String(filters.types.has(button.dataset.filterType))));
+  document.querySelectorAll('[data-filter-severity]').forEach(button=>
+    button.setAttribute('aria-pressed',String(filters.severities.has(button.dataset.filterSeverity))));
+  document.getElementById('blockedFilter').setAttribute('aria-pressed',String(filters.blocked));
+  document.getElementById('rulesFilter').setAttribute('aria-pressed',String(filters.rules));
+  agentFilterButton.setAttribute('aria-pressed',String(filters.agents.size>0));
+  const selectedCount=document.getElementById('selectedAgentCount');
+  selectedCount.hidden=filters.agents.size===0;
+  if(filters.agents.size)selectedCount.textContent=
+    i18n.t('selected_agent_count',{n:filters.agents.size});
+  document.getElementById('clearFilters').hidden=!activeFilters();
+  updateAgentOptions();
+}
+function filteredRecords(){return all.filter(matchesFilters);}
+function updateEmptyState(matchCount){
+  if(matchCount){empty.style.display='none';return;}
+  empty.style.display='';
+  empty.textContent=all.length?i18n.t('no_filter_results'):i18n.t('empty_activity');
+}
 function relTime(ts){
   if(!ts)return'';
   const s=Math.max(0,(Date.now()-new Date(ts).getTime())/1000);
-  if(s<60)return Math.floor(s)+'s ago';
-  if(s<3600)return Math.floor(s/60)+'m ago';
-  if(s<86400)return Math.floor(s/3600)+'h ago';
-  return Math.floor(s/86400)+'d ago';
+  if(s<60)return i18n.t('relative_seconds',{n:Math.floor(s)});
+  if(s<3600)return i18n.t('relative_minutes',{n:Math.floor(s/60)});
+  if(s<86400)return i18n.t('relative_hours',{n:Math.floor(s/3600)});
+  return i18n.t('relative_days',{n:Math.floor(s/86400)});
 }
 function renderCard(rec,flash){
   empty.style.display='none';
@@ -291,70 +677,77 @@ function renderCard(rec,flash){
   const type=recordType(rec);
   if(type==='event'){
     card.classList.add('activity');
-    const event=esc(rec.event_type||'event');
+    const event=esc(i18n.enumLabel('event_types',rec.event_type||'event'));
     const tool=esc(rec.tool_name||rec.mcp_tool||'');
     const actor=esc(rec.actor||rec.source_agent||'');
     const command=rec.command||'';
     const decision=rec.approval_decision||rec.decision||'';
     card.innerHTML=`<div class="row1">
-      <span class="badge info">event</span>
+      <span class="badge info">${esc(i18n.enumLabel('record_types','event'))}</span>
       <span class="title">${event}</span>
       <span class="time">${fmt(rec.timestamp)}</span></div>
       <div class="meta">
-        ${actor?`<span class="chip">agent <b>${actor}</b></span>`:''}
-        ${tool?`<span class="chip">tool <b>${tool}</b></span>`:''}
-        ${decision?`<span class="chip">decision <b>${esc(decision)}</b></span>`:''}
+        ${actor?`<span class="chip">${i18n.t('label_agent')} <b>${actor}</b></span>`:''}
+        ${tool?`<span class="chip">${i18n.t('label_tool')} <b>${tool}</b></span>`:''}
+        ${decision?`<span class="chip">${i18n.t('label_decision')} <b>${esc(i18n.enumLabel('decisions_map',decision))}</b></span>`:''}
       </div>
-      ${command?`<div class="cmd">${esc(command)}</div>`:''}`;
+      ${command?`<div class="cmd"><span>${i18n.t('label_command')}</span>: ${esc(command)}</div>`:''}`;
   }else if(type==='indicator'){
     card.classList.add('indicator');
-    const kind=esc(rec.type||'indicator'), value=esc(rec.value||'');
+    const kind=esc(rec.type?i18n.enumLabel('indicator_types',rec.type):
+      i18n.enumLabel('record_types','indicator'));
+    const value=esc(rec.value||'');
     card.innerHTML=`<div class="row1">
-      <span class="badge medium">indicator</span>
+      <span class="badge medium">${esc(i18n.enumLabel('record_types','indicator'))}</span>
       <span class="title">${kind}: ${value}</span>
       <span class="time">${fmt(rec.last_seen||rec.timestamp)}</span></div>
       <div class="meta">
-        ${rec.count!=null?`<span class="chip">count <b>${esc(rec.count)}</b></span>`:''}
-        ${rec.source_agent?`<span class="chip">agent <b>${esc(rec.source_agent)}</b></span>`:''}
-        ${rec.first_seen?`<span class="chip">first seen <b>${fmt(rec.first_seen)}</b></span>`:''}
+        ${rec.count!=null?`<span class="chip">${i18n.t('label_count')} <b>${esc(rec.count)}</b></span>`:''}
+        ${rec.source_agent?`<span class="chip">${i18n.t('label_agent')} <b>${esc(rec.source_agent)}</b></span>`:''}
+        ${rec.first_seen?`<span class="chip">${i18n.t('label_first_seen')} <b>${fmt(rec.first_seen)}</b></span>`:''}
       </div>`;
   }else if(type==='diagnostic'||type==='scan_summary'){
     card.classList.add('activity');
-    const level=esc(rec.level||type), message=esc(rec.message||rec.status||'');
+    const level=esc(i18n.enumLabel('diagnostic_levels',rec.level||''));
+    const message=esc(rec.message||rec.status||'');
     card.innerHTML=`<div class="row1">
-      <span class="badge info">${level}</span>
-      <span class="title">${type==='diagnostic'?'Numbat diagnostic':'Scan summary'}</span>
+      <span class="badge info">${level||esc(i18n.enumLabel('record_types',type))}</span>
+      <span class="title">${esc(i18n.enumLabel('record_types',type))}</span>
       <span class="time">${fmt(rec.timestamp)}</span></div>
       ${message?`<div class="meta"><span class="chip">${message}</span></div>`:''}`;
   }else if(type==='enforcement'){
     card.classList.add('enforcement');
-    const dec=esc(rec.decision||'?'), mode=esc(rec.mode||''), rules=(rec.rule_ids||[]).map(esc).join(', ');
+    const decision=rec.decision||'?';
+    const dec=esc(i18n.enumLabel('decisions_map',decision));
+    const mode=esc(rec.mode||''), rules=(rec.rule_ids||[]).map(esc).join(', ');
     card.innerHTML=`<div class="row1">
-      <span class="badge enf">decision</span>
-      <span class="decision ${dec}">${dec}</span>
+      <span class="badge enf">${esc(i18n.enumLabel('record_types','enforcement'))}</span>
+      <span class="decision ${esc(decision)}">${dec}</span>
       <span class="time">${fmt(rec.timestamp)}</span></div>
       <div class="meta">
-        ${mode?`<span class="chip">mode <b>${mode}</b></span>`:''}
-        ${rules?`<span class="chip">rules <b>${rules}</b></span>`:''}
-        ${rec.reason?`<span class="chip">reason <b>${esc(rec.reason)}</b></span>`:''}
-        ${rec.tool_name?`<span class="chip">tool <b>${esc(rec.tool_name)}</b></span>`:''}
+        ${mode?`<span class="chip">${i18n.t('label_mode')} <b>${mode}</b></span>`:''}
+        ${rules?`<span class="chip">${i18n.t('label_rules')} <b>${rules}</b></span>`:''}
+        ${rec.reason?`<span class="chip">${i18n.t('label_reason')} <b>${esc(rec.reason)}</b></span>`:''}
+        ${rec.tool_name?`<span class="chip">${i18n.t('label_tool')} <b>${esc(rec.tool_name)}</b></span>`:''}
       </div>`;
   }else{
-    const sev=(rec.severity||'info').toLowerCase();
-    card.classList.add('sev-'+sev);
+    const severity=String(rec.severity||'info').toLowerCase();
+    const sev=esc(i18n.enumLabel('severities',severity));
+    const severityClass=['critical','high','medium','low','info'].includes(severity)?severity:'info';
+    card.classList.add('sev-'+severityClass);
     const tags=(rec.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join(' ');
     card.innerHTML=`<div class="row1">
-      <span class="badge ${sev}">${esc(sev)}</span>
-      <span class="title">${esc(rec.title||rec.rule_id||'Finding')}</span>
+      <span class="badge ${severityClass}">${sev}</span>
+      <span class="title">${esc(rec.title||rec.rule_id||i18n.enumLabel('record_types','finding'))}</span>
       <span class="time">${fmt(rec.timestamp||rec.detected_at)}</span></div>
       <div class="meta">
-        <span class="rule">${esc(rec.rule_id||'')}${rec.rule_version?' v'+esc(rec.rule_version):''}</span>
-        ${rec.observed_actor?`<span class="chip">actor <b>${esc(rec.observed_actor)}</b></span>`:''}
-        ${rec.source_agent?`<span class="chip">agent <b>${esc(rec.source_agent)}</b></span>`:''}
-        ${rec.confidence?`<span class="chip">confidence <b>${esc(rec.confidence)}</b></span>`:''}
+        <span class="rule">${rec.rule_id?i18n.t('label_rule')+' ':''}${esc(rec.rule_id||'')}${rec.rule_version?' v'+esc(rec.rule_version):''}</span>
+        ${rec.observed_actor?`<span class="chip">${i18n.t('label_actor')} <b>${esc(rec.observed_actor)}</b></span>`:''}
+        ${rec.source_agent?`<span class="chip">${i18n.t('label_agent')} <b>${esc(rec.source_agent)}</b></span>`:''}
+        ${rec.confidence?`<span class="chip">${i18n.t('label_confidence')} <b>${esc(rec.confidence)}</b></span>`:''}
         ${tags}
       </div>
-      ${rec.observed_command?`<div class="cmd">${esc(rec.observed_command)}</div>`:''}`;
+      ${rec.observed_command?`<div class="cmd"><span>${i18n.t('label_command')}</span>: ${esc(rec.observed_command)}</div>`:''}`;
   }
   list.insertBefore(card,list.firstChild);
 }
@@ -383,11 +776,14 @@ function updateStats(){
   set('sEvents',events.length); set('cEvents',events.length);
   set('sIndicators',indicators.length); set('cIndicators',indicators.length);
   const tot=findings.length||1;
-  const segs=[['high/critical',sev.high+sev.critical,'var(--high)'],
-    ['medium',sev.medium,'var(--medium)'],['low',sev.low,'var(--low)'],
-    ['info',sev.info,'var(--info)']];
+  const segs=[[
+    i18n.enumLabel('severities','high')+' / '+i18n.enumLabel('severities','critical'),
+    sev.high+sev.critical,'var(--high)'],
+    [i18n.enumLabel('severities','medium'),sev.medium,'var(--medium)'],
+    [i18n.enumLabel('severities','low'),sev.low,'var(--low)'],
+    [i18n.enumLabel('severities','info'),sev.info,'var(--info)']];
   document.getElementById('sevbar').innerHTML=segs.map(([n,c,col])=>
-    c?`<span style="width:${(c/tot*100).toFixed(2)}%;background:${col}" title="${n}: ${c}"></span>`:'').join('');
+    c?`<span style="width:${(c/tot*100).toFixed(2)}%;background:${col}" title="${i18n.t('severity_title',{name:n,count:c})}"></span>`:'').join('');
   document.getElementById('sevlegend').innerHTML=segs.map(([n,c,col])=>
     `<span><i style="background:${col}"></i>${n} ${c}</span>`).join('');
   const top=Object.entries(rules).sort((a,b)=>b[1]-a[1]).slice(0,4);
@@ -395,42 +791,127 @@ function updateStats(){
   document.getElementById('rulesList').innerHTML=top.length?top.map(([id,c])=>
     `<div class="rule-row"><span class="rname">${esc(id)}</span>`+
     `<span class="bar" style="width:${Math.round(c/max*120)}px"></span>`+
-    `<span class="rcount">${c}</span></div>`).join(''):'<span class="stat">none yet</span>';
-  document.getElementById('lastSeen').textContent=lastTs?('· last '+relTime(lastTs)):'';
+    `<span class="rcount">${c}</span></div>`).join(''):
+    `<span class="stat">${i18n.t('none_yet')}</span>`;
+  document.getElementById('lastSeen').textContent=lastTs?
+    i18n.t('last_seen',{time:relTime(lastTs)}):'';
 }
 function addRec(rec,flash){
-  all.push(rec); renderCard(rec,flash);
-  while(list.children.length>maxCards)list.removeChild(list.lastChild);
-  updateStats();
+  all.push(rec);
+  updateAgentOptions();
+  if(matchesFilters(rec)){
+    renderCard(rec,flash);
+    while(list.children.length>maxCards)list.removeChild(list.lastChild);
+  }
+  const matchCount=filteredRecords().length;
+  updateEmptyState(matchCount); updateFeedNote(matchCount); updateStats();
 }
 let toastT;
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;
+function toast(key,values={}){
+  activeToast={key,values};
+  const t=document.getElementById('toast');t.textContent=i18n.t(key,values);
   t.classList.add('show');clearTimeout(toastT);
   toastT=setTimeout(()=>t.classList.remove('show'),4500);}
+function updateFeedNote(matchCount){
+  const note=document.getElementById('feedNote');
+  note.style.display=matchCount>maxCards?'block':'none';
+  if(matchCount>maxCards)note.textContent=i18n.t('feed_note',{limit:maxCards});
+}
+function renderCurrentCards(){
+  const matching=filteredRecords();
+  list.innerHTML='';
+  matching.slice(-maxCards).forEach(r=>renderCard(r,false));
+  updateEmptyState(matching.length);
+  updateFeedNote(matching.length);
+}
+function updateExportLink(){
+  document.getElementById('exportBtn').href='export.xlsx?lang='+encodeURIComponent(i18n.language);
+}
+let connectionState='connecting';
+function updateConnection(){conn.textContent=i18n.t(connectionState);}
+function applyFilters(){
+  updateFilterControls();
+  renderCurrentCards();
+}
+document.querySelectorAll('[data-filter-type]').forEach(button=>button.addEventListener('click',()=>{
+  const type=button.dataset.filterType;
+  if(filters.types.has(type))filters.types.delete(type);else filters.types.add(type);
+  applyFilters();
+}));
+document.querySelectorAll('[data-filter-severity]').forEach(button=>button.addEventListener('click',()=>{
+  const severity=button.dataset.filterSeverity;
+  if(filters.severities.has(severity))filters.severities.delete(severity);
+  else filters.severities.add(severity);
+  applyFilters();
+}));
+document.getElementById('blockedFilter').addEventListener('click',()=>{
+  filters.blocked=!filters.blocked; applyFilters();
+});
+document.getElementById('rulesFilter').addEventListener('click',()=>{
+  filters.rules=!filters.rules; applyFilters();
+});
+agentFilterButton.addEventListener('click',()=>{
+  const expanded=agentFilterButton.getAttribute('aria-expanded')==='true';
+  agentFilterPanel.hidden=expanded;
+  agentFilterButton.setAttribute('aria-expanded',String(!expanded));
+  if(!expanded){
+    const firstOption=agentFilterOptions.querySelector('input');
+    if(firstOption)firstOption.focus();
+  }
+});
+agentFilterOptions.addEventListener('change',event=>{
+  const input=event.target.closest('input[data-agent-value]');
+  if(!input)return;
+  if(input.checked)filters.agents.add(input.value);else filters.agents.delete(input.value);
+  applyFilters();
+});
+document.addEventListener('click',event=>{
+  if(!agentFilter.contains(event.target)){
+    agentFilterPanel.hidden=true;
+    agentFilterButton.setAttribute('aria-expanded','false');
+  }
+});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&!agentFilterPanel.hidden){
+    agentFilterPanel.hidden=true;
+    agentFilterButton.setAttribute('aria-expanded','false');
+    agentFilterButton.focus();
+  }
+});
+document.getElementById('clearFilters').addEventListener('click',()=>{
+  filters.types.clear(); filters.severities.clear(); filters.agents.clear();
+  filters.blocked=false; filters.rules=false;
+  agentFilterPanel.hidden=true; agentFilterButton.setAttribute('aria-expanded','false');
+  applyFilters();
+});
+window.addEventListener('numbat-language-change',()=>{
+  updateFilterControls(); renderCurrentCards(); updateStats(); updateExportLink(); updateConnection();
+  if(activeToast)document.getElementById('toast').textContent=i18n.t(activeToast.key,activeToast.values);
+});
+updateExportLink();
+updateFilterControls();
 document.getElementById('resetBtn').onclick=()=>{
-  if(!confirm('Reset live records?\\n\\nCurrent records are archived first (retrievable via Archives), then cleared from the live view.'))return;
+  if(!confirm(i18n.t('confirm_reset')))return;
   fetch('reset',{method:'POST'}).then(r=>r.json()).then(res=>{
-    toast(res.count?('Archived '+res.count+' record'+(res.count>1?'s':'')+
-      (res.archived?' → '+res.archived:'')):'Already empty — nothing to archive');
-  }).catch(()=>toast('Reset failed'));
+    if(!res.count){toast('toast_empty');return;}
+    const suffix=res.archived?i18n.t('archive_suffix',{archived:res.archived}):'';
+    toast(res.count===1?'toast_archived_one':'toast_archived_many',
+      {count:res.count,archive_suffix:suffix});
+  }).catch(()=>toast('toast_reset_failed'));
 };
 fetch('history').then(r=>r.json()).then(arr=>{
   all.push(...arr);
-  arr.slice(-maxCards).forEach(r=>renderCard(r,false));
-  if(arr.length>maxCards){
-    const note=document.getElementById('feedNote');
-    note.textContent='Showing the latest '+maxCards+' records; summary counts include the full in-memory history.';
-    note.style.display='block';
-  }
-  updateStats();
+  updateAgentOptions(); renderCurrentCards(); updateStats();
 }).catch(()=>{});
-setInterval(()=>{document.getElementById('lastSeen').textContent=lastTs?('· last '+relTime(lastTs)):'';},5000);
+setInterval(()=>{
+  document.getElementById('lastSeen').textContent=lastTs?i18n.t('last_seen',{time:relTime(lastTs)}):'';
+},5000);
 const es=new EventSource('events');
-es.onopen=()=>{dot.classList.remove('off');conn.textContent='live';};
-es.onerror=()=>{dot.classList.add('off');conn.textContent='reconnecting…';};
+es.onopen=()=>{dot.classList.remove('off');connectionState='live';updateConnection();};
+es.onerror=()=>{dot.classList.add('off');connectionState='reconnecting';updateConnection();};
 es.onmessage=e=>{try{addRec(JSON.parse(e.data),true);}catch(_){}};
 es.addEventListener('reset',()=>{all.length=0;list.innerHTML='';
-  empty.style.display='';document.getElementById('feedNote').style.display='none';updateStats();});
+  updateAgentOptions();renderCurrentCards();updateStats();});
 </script>
 </body></html>
 """
@@ -438,7 +919,7 @@ es.addEventListener('reset',()=>{all.length=0;list.innerHTML='';
 ARCHIVES_TMPL = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Numbat — Archives</title>
+<title data-i18n="archives_title">Numbat — Archived Records</title>
 <style>
 :root{--bg:#0e1116;--panel:#161b22;--panel2:#1c2430;--border:#2a3441;
   --text:#e6edf3;--muted:#8b98a5;--accent:#4c9be8}
@@ -451,6 +932,9 @@ header{background:var(--panel);border-bottom:1px solid var(--border);padding:14p
   display:flex;align-items:center;gap:14px}
 h1{font-size:16px;margin:0;font-weight:650}
 .spacer{flex:1}
+.language-wrap{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.language-select{font:inherit;color:var(--text);background:var(--panel2);
+  border:1px solid var(--border);border-radius:7px;padding:5px 8px}
 a.back{font-size:12px;color:var(--accent);text-decoration:none}
 .wrap{max-width:820px;margin:0 auto;padding:24px 20px}
 table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);
@@ -464,35 +948,39 @@ a.dl{color:var(--accent);text-decoration:none;font-family:ui-monospace,SFMono-Re
 a.dl:hover{text-decoration:underline}
 </style></head>
 <body>
-<header><h1>Numbat &middot; Archived Records</h1><div class="spacer"></div>
-<a class="back" href="/">&larr; back to live dashboard</a></header>
+<header><h1 data-i18n="archives_heading">Numbat &middot; Archived Records</h1><div class="spacer"></div>
+<span class="language-wrap"><label for="languageSelect" data-i18n="language">Language</label>
+  <select class="language-select" id="languageSelect" data-i18n-aria-label="language">
+    <option value="en">English</option><option value="zh-TW">繁體中文（台灣）</option>
+  </select></span>
+<a class="back" href="/" data-i18n="back_to_dashboard">&larr; Back to live dashboard</a></header>
 <div class="wrap">
-<table><thead><tr><th>Archive file</th><th>Records</th><th>Size</th></tr></thead>
+<table><thead><tr><th data-i18n="archive_file">Archive file</th><th data-i18n="archive_records">Records</th><th data-i18n="archive_size">Size</th></tr></thead>
 <tbody>{{ROWS}}</tbody></table>
-</div></body></html>
+</div>{{I18N_SCRIPT}}</body></html>
 """
 
 
-COLUMNS = [
-    ("Time", lambda r: r.get("timestamp") or r.get("detected_at") or r.get("last_seen") or ""),
-    ("Type", lambda r: r.get("record_type") or r.get("event_type") or r.get("type", "")),
-    ("Severity", lambda r: r.get("severity") or r.get("level", "")),
-    ("Rule", lambda r: r.get("rule_id") or ", ".join(r.get("rule_ids", []))),
-    ("Rule version", lambda r: r.get("rule_version", "")),
-    ("Title", lambda r: r.get("title") or r.get("message", "")),
-    ("Actor", lambda r: r.get("observed_actor") or r.get("actor", "")),
-    ("Agent", lambda r: r.get("source_agent", "")),
-    ("Confidence", lambda r: r.get("confidence", "")),
-    ("MITRE tags", lambda r: ", ".join(r.get("tags", []))),
-    ("Decision", lambda r: r.get("decision") or r.get("approval_decision", "")),
-    ("Mode", lambda r: r.get("mode", "")),
-    ("Reason", lambda r: r.get("reason") or r.get("approval_reason", "")),
-    ("Tool", lambda r: r.get("tool_name") or r.get("mcp_tool", "")),
-    ("Command", lambda r: r.get("observed_command") or r.get("command", "")),
-    ("Session", lambda r: r.get("session_id", "")),
-    ("ID", lambda r: r.get("finding_id") or r.get("decision_id") or r.get("event_id") or r.get("sample_event_id") or ""),
-    ("Indicator value", lambda r: r.get("value", "")),
-    ("Indicator count", lambda r: r.get("count", "")),
+XLSX_COLUMNS = [
+    lambda r: r.get("timestamp") or r.get("detected_at") or r.get("last_seen") or "",
+    lambda r: r.get("record_type") or r.get("event_type") or r.get("type", ""),
+    lambda r: r.get("severity") or r.get("level", ""),
+    lambda r: r.get("rule_id") or ", ".join(r.get("rule_ids", [])),
+    lambda r: r.get("rule_version", ""),
+    lambda r: r.get("title") or r.get("message", ""),
+    lambda r: r.get("observed_actor") or r.get("actor", ""),
+    lambda r: r.get("source_agent", ""),
+    lambda r: r.get("confidence", ""),
+    lambda r: ", ".join(r.get("tags", [])),
+    lambda r: r.get("decision") or r.get("approval_decision", ""),
+    lambda r: r.get("mode", ""),
+    lambda r: r.get("reason") or r.get("approval_reason", ""),
+    lambda r: r.get("tool_name") or r.get("mcp_tool", ""),
+    lambda r: r.get("observed_command") or r.get("command", ""),
+    lambda r: r.get("session_id", ""),
+    lambda r: r.get("finding_id") or r.get("decision_id") or r.get("event_id") or r.get("sample_event_id") or "",
+    lambda r: r.get("value", ""),
+    lambda r: r.get("count", ""),
 ]
 
 
@@ -514,11 +1002,12 @@ def _col(n):
     return s
 
 
-def build_xlsx():
+def build_xlsx(language="en"):
+    language = normalize_language(language)
     with history_lock:
-        rows = [[hdr for hdr, _ in COLUMNS]]
+        rows = [TRANSLATIONS[language]["xlsx_headers"]]
         for rec in history:
-            rows.append([fn(rec) for _, fn in COLUMNS])
+            rows.append([fn(rec) for fn in XLSX_COLUMNS])
 
     sheet = [
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
@@ -556,7 +1045,8 @@ def build_xlsx():
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-        '<sheets><sheet name="Findings" sheetId="1" r:id="rId1"/></sheets></workbook>'
+        '<sheets><sheet name="%s" sheetId="1" r:id="rId1"/></sheets></workbook>'
+        % _xesc(TRANSLATIONS[language]["xlsx_sheet_name"])
     )
     workbook_rels = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -629,10 +1119,10 @@ def render_archives_html():
             % (a["name"], a["name"], a["records"], kb)
         )
     body = "".join(rows) or (
-        '<tr><td colspan="3" style="color:var(--muted)">No archives yet — '
-        "use Reset on the dashboard to create one.</td></tr>"
+        '<tr><td colspan="3" style="color:var(--muted)" data-i18n="archives_empty">'
+        'No archives yet — use Reset on the dashboard to create one.</td></tr>'
     )
-    return ARCHIVES_TMPL.replace("{{ROWS}}", body)
+    return render_template(ARCHIVES_TMPL.replace("{{ROWS}}", body))
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -655,9 +1145,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        path = self.path.split("?")[0]
+        request = urlsplit(self.path)
+        path = request.path
         if path == "/":
-            self._send(200, "text/html; charset=utf-8", PAGE.encode())
+            self._send(200, "text/html; charset=utf-8", render_template(PAGE).encode())
         elif path == "/history":
             with history_lock:
                 body = json.dumps(history).encode()
@@ -681,7 +1172,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 self._send(404, "text/plain", b"not found")
         elif path == "/export.xlsx":
-            body = build_xlsx()
+            language = parse_qs(request.query).get("lang", ["en"])[0]
+            body = build_xlsx(language)
             fname = "numbat-findings-%s.xlsx" % datetime.datetime.now().strftime(
                 "%Y%m%d-%H%M%S"
             )
