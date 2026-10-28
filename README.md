@@ -23,12 +23,12 @@ alone.
 
 | | |
 |---|---|
-| **Live detection feed** | New findings stream into the browser in ~1s via Server-Sent Events (SSE) — no refresh. Each card shows severity, rule id, MITRE ATT&CK tag, the observed command, actor/agent, and the monitor-vs-enforce decision. |
-| **Summary panel** | Stat tiles (findings, high/critical, medium, blocked, unique rules, agents), a proportional severity-mix bar, and a ranked "top rules" breakdown — all recomputed live. |
-| **Export to Excel** | Downloads a genuine `.xlsx` (built with the stdlib `zipfile` module — no `openpyxl`/`pandas`), one row per record across 17 columns. |
+| **Live record feed** | Findings, agent events, and indicators stream into the browser in ~1s via Server-Sent Events (SSE) — no refresh. |
+| **Summary panel** | Counts findings, events, indicators, decisions, severity, rules, and agents. |
+| **Export to Excel** | Downloads a genuine `.xlsx` (built with the stdlib `zipfile` module — no `openpyxl`/`pandas`), with one row per record. |
 | **Reset + archive** | Clears the live view after first **archiving** the full history to a timestamped file, so nothing is ever lost. |
 | **Archives browser** | Browse and download every past archive at `/archives`. |
-| **Truncation-proof** | Keeps history in memory, so it survives Numbat's `findings.ndjson` being rotated or drained. |
+| **Truncation-proof** | Keeps history in memory, so it survives the watched Numbat stream being rotated or drained. |
 | **Theme-aware** | Automatic light/dark styling. |
 
 ---
@@ -89,8 +89,11 @@ Swap `claude` for `codex`, `cursor`, `gemini`, etc. Check what Numbat found on
 your machine with `numbat agents`, and verify wiring with
 `numbat hook status --agent all`.
 
-By default Numbat writes detections to `~/.numbat/findings.ndjson` — which is
-exactly what this dashboard reads.
+By default the dashboard reads `~/.numbat/findings.ndjson`. If that file is
+empty and `~/.numbat/records.ndjson` contains data, it automatically reads the
+records stream instead. Set `NUMBAT_FINDINGS` to choose a specific file.
+Numbat's `--emit all` mode writes the complete stream, including events and
+indicators, to `records.ndjson`.
 
 ### 3. Run the dashboard
 
@@ -100,7 +103,7 @@ python3 dashboard.py
 
 Then open **http://localhost:8787**.
 
-That's it. Trigger any agent activity that matches a rule and it appears live.
+That's it. Agent events appear live; findings appear when an activity matches a rule.
 
 ### 4. (Optional) Configuration
 
@@ -108,7 +111,7 @@ The dashboard reads these environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NUMBAT_FINDINGS` | `~/.numbat/findings.ndjson` | Findings file to tail |
+| `NUMBAT_FINDINGS` | auto: findings, then records when findings is empty | NDJSON file to tail |
 | `NUMBAT_DASH_PORT` | `8787` | HTTP port |
 | `NUMBAT_ARCHIVE_DIR` | `~/.numbat/archive` | Where Reset archives go |
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Numbat findings dashboard — zero-dependency live viewer.
+"""Numbat record dashboard — zero-dependency live viewer.
 
-Tails ~/.numbat/findings.ndjson and streams new records to the browser via
-Server-Sent Events, rendering findings and enforcement decisions as human-
-readable cards. Survives file truncation/rotation (the findings file gets
-periodically drained) by keeping an in-memory history keyed by record id.
+Tails Numbat's findings or records NDJSON stream and sends new records to the
+browser via Server-Sent Events. Survives file truncation/rotation by keeping
+an in-memory history keyed by record id.
 """
 import datetime
 import http.server
@@ -16,9 +15,27 @@ import threading
 import time
 import zipfile
 
-FINDINGS = os.environ.get(
-    "NUMBAT_FINDINGS", os.path.expanduser("~/.numbat/findings.ndjson")
-)
+DEFAULT_FINDINGS = os.path.expanduser("~/.numbat/findings.ndjson")
+DEFAULT_RECORDS = os.path.expanduser("~/.numbat/records.ndjson")
+
+
+def default_input():
+    configured = os.environ.get("NUMBAT_FINDINGS")
+    if configured:
+        return configured
+    try:
+        if os.path.getsize(DEFAULT_FINDINGS) == 0 and os.path.getsize(DEFAULT_RECORDS) > 0:
+            return DEFAULT_RECORDS
+    except OSError:
+        try:
+            if os.path.getsize(DEFAULT_RECORDS) > 0:
+                return DEFAULT_RECORDS
+        except OSError:
+            pass
+    return DEFAULT_FINDINGS
+
+
+FINDINGS = default_input()
 PORT = int(os.environ.get("NUMBAT_DASH_PORT", "8787"))
 ARCHIVE_DIR = os.environ.get(
     "NUMBAT_ARCHIVE_DIR", os.path.expanduser("~/.numbat/archive")
@@ -138,6 +155,8 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
 .card.sev-low{border-left-color:var(--low)}
 .card.sev-info{border-left-color:var(--info)}
 .card.enforcement{border-left-color:var(--muted);background:var(--panel2)}
+.card.activity{border-left-color:var(--accent)}
+.card.indicator{border-left-color:var(--medium)}
 .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
   padding:2px 8px;border-radius:20px;color:#fff}
@@ -173,8 +192,8 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
   opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;z-index:20}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .stats{margin-bottom:20px}
-.tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
-@media(max-width:760px){.tiles{grid-template-columns:repeat(3,1fr)}}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:760px){.tiles{grid-template-columns:repeat(2,1fr)}}
 .tile{background:var(--panel);border:1px solid var(--border);border-radius:10px;
   padding:13px 15px}
 .tile .num{font-size:27px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1}
@@ -206,10 +225,12 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
 <body>
 <header>
   <span class="dot" id="dot"></span>
-  <h1>Numbat &middot; Live Agent Findings</h1>
+  <h1>Numbat &middot; Live Agent Monitor</h1>
   <div class="spacer"></div>
   <span class="stat">findings <b id="cFind">0</b></span>
   <span class="stat">decisions <b id="cEnf">0</b></span>
+  <span class="stat">events <b id="cEvents">0</b></span>
+  <span class="stat">indicators <b id="cIndicators">0</b></span>
   <a class="btn" href="archives" target="_blank">Archives</a>
   <a class="btn" href="export.xlsx">&#8681; Export Excel</a>
   <button class="btn danger" id="resetBtn">&#8635; Reset</button>
@@ -224,6 +245,8 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
       <div class="tile ok"><div class="num" id="sBlocked">0</div><div class="lbl">Blocked</div></div>
       <div class="tile"><div class="num" id="sRules">0</div><div class="lbl">Rules hit</div></div>
       <div class="tile"><div class="num" id="sAgents">0</div><div class="lbl">Agents</div></div>
+      <div class="tile"><div class="num" id="sEvents">0</div><div class="lbl">Events</div></div>
+      <div class="tile"><div class="num" id="sIndicators">0</div><div class="lbl">Indicators</div></div>
     </div>
     <div class="stats2">
       <div class="panel">
@@ -237,7 +260,8 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
       </div>
     </div>
   </section>
-  <div id="empty" class="empty">Waiting for agent activity&hellip; detections will appear here in real time.</div>
+  <div id="empty" class="empty">Waiting for agent activity&hellip; events and detections will appear here in real time.</div>
+  <div id="feedNote" class="stat" style="display:none;margin-bottom:10px"></div>
   <div id="list"></div>
 </div>
 <div class="toast" id="toast"></div>
@@ -245,8 +269,13 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
 const list=document.getElementById('list'), empty=document.getElementById('empty');
 const dot=document.getElementById('dot'), conn=document.getElementById('conn');
 const all=[]; let lastTs=null;
+const maxCards=200;
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function fmt(ts){if(!ts)return'';const d=new Date(ts);return isNaN(d)?esc(ts):d.toLocaleString();}
+function recordType(rec){
+  if(rec.record_type)return rec.record_type;
+  return rec.decision_id?'enforcement':'finding';
+}
 function relTime(ts){
   if(!ts)return'';
   const s=Math.max(0,(Date.now()-new Date(ts).getTime())/1000);
@@ -259,7 +288,45 @@ function renderCard(rec,flash){
   empty.style.display='none';
   const card=document.createElement('div');
   card.className='card'+(flash?' flash':'');
-  if(rec.record_type==='enforcement'){
+  const type=recordType(rec);
+  if(type==='event'){
+    card.classList.add('activity');
+    const event=esc(rec.event_type||'event');
+    const tool=esc(rec.tool_name||rec.mcp_tool||'');
+    const actor=esc(rec.actor||rec.source_agent||'');
+    const command=rec.command||'';
+    const decision=rec.approval_decision||rec.decision||'';
+    card.innerHTML=`<div class="row1">
+      <span class="badge info">event</span>
+      <span class="title">${event}</span>
+      <span class="time">${fmt(rec.timestamp)}</span></div>
+      <div class="meta">
+        ${actor?`<span class="chip">agent <b>${actor}</b></span>`:''}
+        ${tool?`<span class="chip">tool <b>${tool}</b></span>`:''}
+        ${decision?`<span class="chip">decision <b>${esc(decision)}</b></span>`:''}
+      </div>
+      ${command?`<div class="cmd">${esc(command)}</div>`:''}`;
+  }else if(type==='indicator'){
+    card.classList.add('indicator');
+    const kind=esc(rec.type||'indicator'), value=esc(rec.value||'');
+    card.innerHTML=`<div class="row1">
+      <span class="badge medium">indicator</span>
+      <span class="title">${kind}: ${value}</span>
+      <span class="time">${fmt(rec.last_seen||rec.timestamp)}</span></div>
+      <div class="meta">
+        ${rec.count!=null?`<span class="chip">count <b>${esc(rec.count)}</b></span>`:''}
+        ${rec.source_agent?`<span class="chip">agent <b>${esc(rec.source_agent)}</b></span>`:''}
+        ${rec.first_seen?`<span class="chip">first seen <b>${fmt(rec.first_seen)}</b></span>`:''}
+      </div>`;
+  }else if(type==='diagnostic'||type==='scan_summary'){
+    card.classList.add('activity');
+    const level=esc(rec.level||type), message=esc(rec.message||rec.status||'');
+    card.innerHTML=`<div class="row1">
+      <span class="badge info">${level}</span>
+      <span class="title">${type==='diagnostic'?'Numbat diagnostic':'Scan summary'}</span>
+      <span class="time">${fmt(rec.timestamp)}</span></div>
+      ${message?`<div class="meta"><span class="chip">${message}</span></div>`:''}`;
+  }else if(type==='enforcement'){
     card.classList.add('enforcement');
     const dec=esc(rec.decision||'?'), mode=esc(rec.mode||''), rules=(rec.rule_ids||[]).map(esc).join(', ');
     card.innerHTML=`<div class="row1">
@@ -292,15 +359,20 @@ function renderCard(rec,flash){
   list.insertBefore(card,list.firstChild);
 }
 function updateStats(){
-  const findings=all.filter(r=>r.record_type!=='enforcement');
-  const decisions=all.filter(r=>r.record_type==='enforcement');
+  const findings=all.filter(r=>recordType(r)==='finding');
+  const decisions=all.filter(r=>recordType(r)==='enforcement');
+  const events=all.filter(r=>recordType(r)==='event');
+  const indicators=all.filter(r=>recordType(r)==='indicator');
   const sev={critical:0,high:0,medium:0,low:0,info:0};
   const rules={}; const agents=new Set(); lastTs=null;
   findings.forEach(r=>{
     let s=(r.severity||'info').toLowerCase(); if(sev[s]==null)s='info'; sev[s]++;
     rules[r.rule_id||'?']=(rules[r.rule_id||'?']||0)+1;
+  });
+  all.forEach(r=>{
     if(r.source_agent)agents.add(r.source_agent);
-    const t=r.timestamp||r.detected_at; if(t&&(!lastTs||t>lastTs))lastTs=t;
+    const t=r.timestamp||r.detected_at||r.last_seen;
+    if(t&&(!lastTs||t>lastTs))lastTs=t;
   });
   const blocked=decisions.filter(d=>(d.decision||'')==='deny').length;
   const set=(id,v)=>document.getElementById(id).textContent=v;
@@ -308,6 +380,8 @@ function updateStats(){
   set('sMed',sev.medium); set('sBlocked',blocked);
   set('sRules',Object.keys(rules).length); set('sAgents',agents.size);
   set('cFind',findings.length); set('cEnf',decisions.length);
+  set('sEvents',events.length); set('cEvents',events.length);
+  set('sIndicators',indicators.length); set('cIndicators',indicators.length);
   const tot=findings.length||1;
   const segs=[['high/critical',sev.high+sev.critical,'var(--high)'],
     ['medium',sev.medium,'var(--medium)'],['low',sev.low,'var(--low)'],
@@ -324,26 +398,39 @@ function updateStats(){
     `<span class="rcount">${c}</span></div>`).join(''):'<span class="stat">none yet</span>';
   document.getElementById('lastSeen').textContent=lastTs?('· last '+relTime(lastTs)):'';
 }
-function addRec(rec,flash){all.push(rec);renderCard(rec,flash);updateStats();}
+function addRec(rec,flash){
+  all.push(rec); renderCard(rec,flash);
+  while(list.children.length>maxCards)list.removeChild(list.lastChild);
+  updateStats();
+}
 let toastT;
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;
   t.classList.add('show');clearTimeout(toastT);
   toastT=setTimeout(()=>t.classList.remove('show'),4500);}
 document.getElementById('resetBtn').onclick=()=>{
-  if(!confirm('Reset all findings?\\n\\nCurrent findings are archived first (retrievable via Archives), then cleared from the live view.'))return;
+  if(!confirm('Reset live records?\\n\\nCurrent records are archived first (retrievable via Archives), then cleared from the live view.'))return;
   fetch('reset',{method:'POST'}).then(r=>r.json()).then(res=>{
     toast(res.count?('Archived '+res.count+' record'+(res.count>1?'s':'')+
       (res.archived?' → '+res.archived:'')):'Already empty — nothing to archive');
   }).catch(()=>toast('Reset failed'));
 };
-fetch('history').then(r=>r.json()).then(arr=>{arr.forEach(r=>addRec(r,false));}).catch(()=>{});
+fetch('history').then(r=>r.json()).then(arr=>{
+  all.push(...arr);
+  arr.slice(-maxCards).forEach(r=>renderCard(r,false));
+  if(arr.length>maxCards){
+    const note=document.getElementById('feedNote');
+    note.textContent='Showing the latest '+maxCards+' records; summary counts include the full in-memory history.';
+    note.style.display='block';
+  }
+  updateStats();
+}).catch(()=>{});
 setInterval(()=>{document.getElementById('lastSeen').textContent=lastTs?('· last '+relTime(lastTs)):'';},5000);
 const es=new EventSource('events');
 es.onopen=()=>{dot.classList.remove('off');conn.textContent='live';};
 es.onerror=()=>{dot.classList.add('off');conn.textContent='reconnecting…';};
 es.onmessage=e=>{try{addRec(JSON.parse(e.data),true);}catch(_){}};
 es.addEventListener('reset',()=>{all.length=0;list.innerHTML='';
-  empty.style.display='';updateStats();});
+  empty.style.display='';document.getElementById('feedNote').style.display='none';updateStats();});
 </script>
 </body></html>
 """
@@ -377,7 +464,7 @@ a.dl{color:var(--accent);text-decoration:none;font-family:ui-monospace,SFMono-Re
 a.dl:hover{text-decoration:underline}
 </style></head>
 <body>
-<header><h1>Numbat &middot; Archived Findings</h1><div class="spacer"></div>
+<header><h1>Numbat &middot; Archived Records</h1><div class="spacer"></div>
 <a class="back" href="/">&larr; back to live dashboard</a></header>
 <div class="wrap">
 <table><thead><tr><th>Archive file</th><th>Records</th><th>Size</th></tr></thead>
@@ -387,23 +474,25 @@ a.dl:hover{text-decoration:underline}
 
 
 COLUMNS = [
-    ("Time", lambda r: r.get("timestamp") or r.get("detected_at") or ""),
-    ("Type", lambda r: r.get("record_type", "")),
-    ("Severity", lambda r: r.get("severity", "")),
+    ("Time", lambda r: r.get("timestamp") or r.get("detected_at") or r.get("last_seen") or ""),
+    ("Type", lambda r: r.get("record_type") or r.get("event_type") or r.get("type", "")),
+    ("Severity", lambda r: r.get("severity") or r.get("level", "")),
     ("Rule", lambda r: r.get("rule_id") or ", ".join(r.get("rule_ids", []))),
     ("Rule version", lambda r: r.get("rule_version", "")),
-    ("Title", lambda r: r.get("title", "")),
-    ("Actor", lambda r: r.get("observed_actor", "")),
+    ("Title", lambda r: r.get("title") or r.get("message", "")),
+    ("Actor", lambda r: r.get("observed_actor") or r.get("actor", "")),
     ("Agent", lambda r: r.get("source_agent", "")),
     ("Confidence", lambda r: r.get("confidence", "")),
     ("MITRE tags", lambda r: ", ".join(r.get("tags", []))),
-    ("Decision", lambda r: r.get("decision", "")),
+    ("Decision", lambda r: r.get("decision") or r.get("approval_decision", "")),
     ("Mode", lambda r: r.get("mode", "")),
-    ("Reason", lambda r: r.get("reason", "")),
-    ("Tool", lambda r: r.get("tool_name", "")),
-    ("Command", lambda r: r.get("observed_command", "")),
+    ("Reason", lambda r: r.get("reason") or r.get("approval_reason", "")),
+    ("Tool", lambda r: r.get("tool_name") or r.get("mcp_tool", "")),
+    ("Command", lambda r: r.get("observed_command") or r.get("command", "")),
     ("Session", lambda r: r.get("session_id", "")),
-    ("ID", lambda r: r.get("finding_id") or r.get("decision_id") or ""),
+    ("ID", lambda r: r.get("finding_id") or r.get("decision_id") or r.get("event_id") or r.get("sample_event_id") or ""),
+    ("Indicator value", lambda r: r.get("value", "")),
+    ("Indicator count", lambda r: r.get("count", "")),
 ]
 
 
@@ -549,6 +638,14 @@ def render_archives_html():
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
+
+    def handle(self):
+        try:
+            super().handle()
+        except ConnectionResetError:
+            # A browser may close a connection before sending a full request.
+            # Treat that like the disconnects handled in the SSE endpoint.
+            pass
 
     def _send(self, code, ctype, body):
         self.send_response(code)
